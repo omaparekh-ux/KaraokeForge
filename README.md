@@ -12,11 +12,12 @@ KaraokeForge turns an uploaded song into a karaoke-ready MP4 without requiring a
 
 ## Architecture
 
-- `app/`: Next.js frontend. Large media is uploaded directly from the browser to the worker.
-- `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads.
-- `processor/`: legacy prototype kept for reference; new development should use `worker/`.
+- `app/`: Next.js frontend. It can connect directly to a Hugging Face Gradio Space, which keeps large media uploads away from Vercel Functions.
+- `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads. This is the recommended self-hosted production engine.
+- `hf_space/`: free Hugging Face ZeroGPU Gradio adapter for a no-paid-API prototype deployment.
+- `processor/`: legacy prototype kept for reference; new development should use `worker/` or `hf_space/`.
 
-The public worker URL is exposed to the browser through `NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL`. The worker enables CORS only for the origins listed in `FRONTEND_ORIGINS`.
+The preferred prototype backend is configured with `NEXT_PUBLIC_KARAOKEFORGE_SPACE`, for example `your-hf-username/KaraokeForge-Worker`. The browser uses the official `@gradio/client` package to upload media and submit a queued job. Gradio Spaces expose API endpoints automatically, and the JavaScript client supports browser files plus queued status events. citeturn357765search1turn357765search3
 
 ## Local development
 
@@ -27,15 +28,19 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and set:
+Copy `.env.example` to `.env.local` and set either:
+
+```text
+NEXT_PUBLIC_KARAOKEFORGE_SPACE=your-hf-username/KaraokeForge-Worker
+```
+
+or, for the self-hosted FastAPI mode:
 
 ```text
 NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL=http://localhost:8000
 ```
 
 ### Worker
-
-Recommended container path:
 
 ```bash
 cd worker
@@ -53,23 +58,35 @@ ffmpeg -version
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Check `http://localhost:8000/health`.
+### Free ZeroGPU Space
 
-For CPU testing, use `WHISPER_MODEL=tiny` or `base`. `small` is the default. A GPU worker is strongly recommended for useful processing times. Keep `MAX_CONCURRENT_JOBS=1` on a single-GPU machine.
+Create a new **Gradio Space**, select **ZeroGPU** hardware in the Space settings, and copy `hf_space/README.md`, `hf_space/app.py`, `hf_space/requirements.txt`, and `hf_space/packages.txt` into the Space. ZeroGPU is currently compatible with Gradio and can be hosted free on eligible personal accounts; the current free quota is 5 GPU-minutes per day. citeturn576858search0turn576858search2
+
+The worker uses a 300-second GPU duration budget and a single concurrent queue slot. A single song can consume a meaningful part of the free daily quota, so this path is intended for prototype/testing rather than high-volume service.
 
 ## Deployment
 
-Import the repository into Vercel as a Next.js project. Set `NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL` to the public HTTPS URL of the worker. Also set the same URL in `KARAOKEFORGE_WORKER_URL` when server-side proxy routes are needed.
+### Vercel
 
-The browser uploads the actual media directly to the worker. This avoids Vercel Functions' 4.5 MB request payload limit, which is too small for many songs and practically all source videos. citeturn848328search1
+Import `omaparekh-ux/KaraokeForge` into Vercel as a Next.js project. No Vercel upload proxy is required. Large media is sent directly from the browser to the configured Gradio Space or self-hosted worker.
 
-On the worker, set:
+Set:
 
 ```text
-FRONTEND_ORIGINS=https://your-vercel-domain.vercel.app
+NEXT_PUBLIC_KARAOKEFORGE_SPACE=your-hf-username/KaraokeForge-Worker
 ```
 
-The worker must run on infrastructure capable of executing FFmpeg, PyTorch, Demucs and faster-whisper. Use a persistent volume for `JOBS_DIR` so generated media and the SQLite job database survive restarts. See `DEPLOYMENT.md` for the full setup.
+The fallback FastAPI setting remains:
+
+```text
+NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL=https://YOUR-WORKER-HOST
+```
+
+Vercel's function request-body limit is therefore not in the media-upload path. citeturn848328search1
+
+### Self-hosted worker
+
+Set the worker's `FRONTEND_ORIGINS` to the exact Vercel origin and keep `JOBS_DIR` on persistent storage. See `DEPLOYMENT.md` for the full configuration.
 
 ## CI
 
