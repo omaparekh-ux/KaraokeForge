@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -20,6 +19,7 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "250"))
 DEMUCS_MODEL = os.getenv("DEMUCS_MODEL", "htdemucs")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 VIDEO_PRESET = os.getenv("VIDEO_PRESET", "medium")
+GPU_DURATION = int(os.getenv("GPU_DURATION", "120"))
 
 
 def run(cmd: list[str]) -> None:
@@ -134,7 +134,7 @@ def clean_old_outputs(max_age_hours: int = 12) -> None:
             continue
 
 
-@spaces.GPU(duration=300)
+@spaces.GPU(duration=GPU_DURATION)
 def forge(media: str, progress: gr.Progress = gr.Progress(track_tqdm=True)):
     """Turn one uploaded song into a karaoke MP4, instrumental WAV, lyrics JSON and ASS subtitles."""
     if not media:
