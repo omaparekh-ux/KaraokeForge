@@ -2,6 +2,8 @@
 
 KaraokeForge turns an uploaded song into a karaoke-ready MP4 without requiring a paid AI API.
 
+> Deployment smoke-test marker: 2026-09-02
+
 ## What it does
 
 1. **FFmpeg** extracts a normalized 44.1 kHz stereo WAV.
@@ -14,13 +16,13 @@ KaraokeForge turns an uploaded song into a karaoke-ready MP4 without requiring a
 
 - `app/`: Next.js frontend. The browser uploads media directly to the processing worker, so large files do not pass through a Vercel Function.
 - `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads.
-- `notebooks/`: one-click-ish free GPU launchers for Kaggle and Google Colab. They run the real `worker/` and expose it through a temporary Cloudflare Quick Tunnel.
+- `notebooks/`: free GPU launchers for Kaggle and Google Colab. They run the real `worker/` and expose it through a temporary Cloudflare Quick Tunnel.
 - `hf_space/`: optional Hugging Face ZeroGPU adapter retained for accounts that are eligible to use ZeroGPU.
 - `processor/`: legacy prototype kept for reference.
 
 ## Free GPU route
 
-The recommended no-paid-compute prototype is **Kaggle GPU + Cloudflare Quick Tunnel**. Kaggle currently documents free NVIDIA P100 access with a weekly GPU quota around 30 hours. Cloudflare Quick Tunnels are free for testing/development and create a temporary HTTPS `trycloudflare.com` URL. citeturn813855search3turn813855search0
+The recommended no-paid-compute prototype is **Kaggle GPU + Cloudflare Quick Tunnel**. Kaggle currently documents free NVIDIA GPU access with a weekly quota. Cloudflare Quick Tunnels are free for testing/development and create a temporary HTTPS `trycloudflare.com` URL.
 
 Open `notebooks/KaraokeForge_Kaggle_GPU.ipynb` in Kaggle, enable GPU and Internet, run the cells top to bottom, then copy the printed worker URL into the KaraokeForge website's **Processing engine** field.
 
@@ -70,7 +72,7 @@ Deploy the Next.js application to Vercel. The large upload is sent directly from
 
 ## Important limitations of the free route
 
-Kaggle/Colab notebook sessions are temporary. When the notebook stops, the worker and its temporary Cloudflare URL stop. Generated files on that session are also temporary. Quick Tunnels are explicitly intended for testing/development, not production. citeturn813855search0
+Kaggle/Colab notebook sessions are temporary. When the notebook stops, the worker and its temporary Cloudflare URL stop. Generated files on that session are also temporary. Quick Tunnels are intended for testing/development, not production.
 
 ## Media rights
 
