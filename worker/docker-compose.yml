@@ -6,6 +6,7 @@ services:
     environment:
       JOBS_DIR: /app/jobs
       JOB_DB: /app/jobs/karaokeforge.db
+      FRONTEND_ORIGINS: http://localhost:3000
       DEMUCS_MODEL: htdemucs
       WHISPER_MODEL: small
       WHISPER_DEVICE: auto
