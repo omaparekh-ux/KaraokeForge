@@ -1,0 +1,22 @@
+services:
+  karaoke-worker:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      JOBS_DIR: /app/jobs
+      JOB_DB: /app/jobs/karaokeforge.db
+      DEMUCS_MODEL: htdemucs
+      WHISPER_MODEL: small
+      WHISPER_DEVICE: auto
+      WHISPER_COMPUTE: float16
+      MAX_UPLOAD_MB: 250
+      MAX_CONCURRENT_JOBS: 1
+      JOB_TTL_HOURS: 24
+      VIDEO_PRESET: medium
+    volumes:
+      - karaoke_jobs:/app/jobs
+    restart: unless-stopped
+
+volumes:
+  karaoke_jobs:
