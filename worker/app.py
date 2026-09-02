@@ -22,7 +22,9 @@ ROOT.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "250"))
 MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "1")))
 JOB_TTL_HOURS = max(1, int(os.getenv("JOB_TTL_HOURS", "24")))
-FRONTEND_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
+# The worker is normally exposed through a temporary public tunnel. Wildcard CORS is safe here because
+# the API does not use browser cookies or credentials. Operators can still lock it down with an explicit list.
+FRONTEND_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "*").split(",") if origin.strip()]
 
 STAGES = {
     "queued": (0, "Waiting to start"),
@@ -110,7 +112,7 @@ def process_job(job_id: str) -> None:
         _set_status(job_id, "rendering")
         output = job / "karaokeforge.mp4"
         render_video(instrumental, source, ass, output)
-        _set_status(job_id, "complete", filename=source.name, title=source.stem, lyrics=f"/jobs/{job_id}/lyrics", download=f"/jobs/{job_id}/download", preview=f"/jobs/{job_id}/preview", instrumental=f"/jobs/{job_id}/instrumental", wordCount=sum(len(segment.get("words", [])) for segment in segments), segmentCount=len(segments))
+        _set_status(job_id, "complete", filename=source.name, title=source.stem, lyrics=f"/jobs/{job_id}/lyrics", download=f"/jobs/{job_id}/download", preview=f"/jobs/{job_id}/preview", instrumental=f"/jobs/{job_id}/instrumental", subtitles=f"/jobs/{job_id}/subtitles", wordCount=sum(len(segment.get("words", [])) for segment in segments), segmentCount=len(segments))
     except Exception as exc:
         _set_status(job_id, "failed", error=f"{type(exc).__name__}: {exc}")
 
@@ -129,7 +131,7 @@ async def lifespan(_: FastAPI):
     EXECUTOR.shutdown(wait=False, cancel_futures=False)
 
 
-app = FastAPI(title="KaraokeForge Worker", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="KaraokeForge Worker", version="0.9.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
@@ -141,7 +143,14 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "karaokeforge-worker", "jobs": count_jobs(), "maxConcurrentJobs": MAX_CONCURRENT_JOBS, "maxUploadMB": MAX_UPLOAD_MB, "jobTtlHours": JOB_TTL_HOURS}
+    return {
+        "status": "ok",
+        "service": "karaokeforge-worker",
+        "jobs": count_jobs(),
+        "maxConcurrentJobs": MAX_CONCURRENT_JOBS,
+        "maxUploadMB": MAX_UPLOAD_MB,
+        "jobTtlHours": JOB_TTL_HOURS,
+    }
 
 
 @app.post("/jobs")
@@ -200,6 +209,17 @@ def lyrics(job_id: str):
     if not target.exists():
         return JSONResponse({"error": "Lyrics are not ready"}, status_code=404)
     return json.loads(target.read_text(encoding="utf-8"))
+
+
+@app.get("/jobs/{job_id}/subtitles")
+def subtitles(job_id: str):
+    try:
+        target = _job_path(job_id) / "lyrics.ass"
+    except ValueError:
+        return JSONResponse({"error": "Invalid job id"}, status_code=400)
+    if not target.exists():
+        return JSONResponse({"error": "Subtitles are not ready"}, status_code=404)
+    return FileResponse(target, media_type="text/plain", filename="lyrics.ass", headers={"Cache-Control": "private, no-store"})
 
 
 @app.get("/jobs/{job_id}/preview")
