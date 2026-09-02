@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from job_store import count_jobs, create_job, get_job as get_stored_job, queued_jobs, reset_running_jobs, update_job
@@ -21,6 +22,7 @@ ROOT.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "250"))
 MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "1")))
 JOB_TTL_HOURS = max(1, int(os.getenv("JOB_TTL_HOURS", "24")))
+FRONTEND_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
 
 STAGES = {
     "queued": (0, "Waiting to start"),
@@ -108,19 +110,7 @@ def process_job(job_id: str) -> None:
         _set_status(job_id, "rendering")
         output = job / "karaokeforge.mp4"
         render_video(instrumental, source, ass, output)
-
-        _set_status(
-            job_id,
-            "complete",
-            filename=source.name,
-            title=source.stem,
-            lyrics=f"/jobs/{job_id}/lyrics",
-            download=f"/jobs/{job_id}/download",
-            preview=f"/jobs/{job_id}/preview",
-            instrumental=f"/jobs/{job_id}/instrumental",
-            wordCount=sum(len(segment.get("words", [])) for segment in segments),
-            segmentCount=len(segments),
-        )
+        _set_status(job_id, "complete", filename=source.name, title=source.stem, lyrics=f"/jobs/{job_id}/lyrics", download=f"/jobs/{job_id}/download", preview=f"/jobs/{job_id}/preview", instrumental=f"/jobs/{job_id}/instrumental", wordCount=sum(len(segment.get("words", [])) for segment in segments), segmentCount=len(segments))
     except Exception as exc:
         _set_status(job_id, "failed", error=f"{type(exc).__name__}: {exc}")
 
@@ -139,19 +129,19 @@ async def lifespan(_: FastAPI):
     EXECUTOR.shutdown(wait=False, cancel_futures=False)
 
 
-app = FastAPI(title="KaraokeForge Worker", version="0.7.0", lifespan=lifespan)
+app = FastAPI(title="KaraokeForge Worker", version="0.8.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=FRONTEND_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"]
+)
 
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "service": "karaokeforge-worker",
-        "jobs": count_jobs(),
-        "maxConcurrentJobs": MAX_CONCURRENT_JOBS,
-        "maxUploadMB": MAX_UPLOAD_MB,
-        "jobTtlHours": JOB_TTL_HOURS,
-    }
+    return {"status": "ok", "service": "karaokeforge-worker", "jobs": count_jobs(), "maxConcurrentJobs": MAX_CONCURRENT_JOBS, "maxUploadMB": MAX_UPLOAD_MB, "jobTtlHours": JOB_TTL_HOURS}
 
 
 @app.post("/jobs")
@@ -161,7 +151,6 @@ async def create_new_job(file: UploadFile = File(...)):
     extension = Path(file.filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         return JSONResponse({"error": f"Unsupported file type: {extension or 'unknown'}"}, status_code=415)
-
     job_id = uuid.uuid4().hex
     job = ROOT / job_id
     job.mkdir(parents=True, exist_ok=True)
@@ -182,7 +171,6 @@ async def create_new_job(file: UploadFile = File(...)):
     except ValueError as exc:
         shutil.rmtree(job, ignore_errors=True)
         return JSONResponse({"error": str(exc)}, status_code=413)
-
     create_job(job_id, safe_name)
     _write_status(job, "queued", filename=safe_name, sizeBytes=total)
     _submit(job_id)
