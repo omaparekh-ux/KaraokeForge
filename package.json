@@ -1,14 +1,16 @@
 {
   "name": "karaokeforge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-    "@gradio/client": "2.5.1",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
