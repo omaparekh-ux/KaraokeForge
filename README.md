@@ -12,12 +12,19 @@ KaraokeForge turns an uploaded song into a karaoke-ready MP4 without requiring a
 
 ## Architecture
 
-- `app/`: Next.js frontend. It can connect directly to a Hugging Face Gradio Space, which keeps large media uploads away from Vercel Functions.
-- `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads. This is the recommended self-hosted production engine.
-- `hf_space/`: free Hugging Face ZeroGPU Gradio adapter for a no-paid-API prototype deployment.
-- `processor/`: legacy prototype kept for reference; new development should use `worker/` or `hf_space/`.
+- `app/`: Next.js frontend. The browser uploads media directly to the processing worker, so large files do not pass through a Vercel Function.
+- `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads.
+- `notebooks/`: one-click-ish free GPU launchers for Kaggle and Google Colab. They run the real `worker/` and expose it through a temporary Cloudflare Quick Tunnel.
+- `hf_space/`: optional Hugging Face ZeroGPU adapter retained for accounts that are eligible to use ZeroGPU.
+- `processor/`: legacy prototype kept for reference.
 
-The preferred prototype backend is configured with `NEXT_PUBLIC_KARAOKEFORGE_SPACE`, for example `your-hf-username/KaraokeForge-Worker`. The browser uses the official `@gradio/client` package to upload media and submit a queued job. Gradio Spaces expose API endpoints automatically, and the JavaScript client supports browser files plus queued status events. citeturn357765search1turn357765search3
+## Free GPU route
+
+The recommended no-paid-compute prototype is **Kaggle GPU + Cloudflare Quick Tunnel**. Kaggle currently documents free NVIDIA P100 access with a weekly GPU quota around 30 hours. Cloudflare Quick Tunnels are free for testing/development and create a temporary HTTPS `trycloudflare.com` URL. citeturn813855search3turn813855search0
+
+Open `notebooks/KaraokeForge_Kaggle_GPU.ipynb` in Kaggle, enable GPU and Internet, run the cells top to bottom, then copy the printed worker URL into the KaraokeForge website's **Processing engine** field.
+
+A Google Colab version is also provided in `notebooks/KaraokeForge_Colab_GPU.ipynb`. Free Colab GPU availability is dynamic, so Kaggle is the preferred free route when available.
 
 ## Local development
 
@@ -28,17 +35,13 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and set either:
-
-```text
-NEXT_PUBLIC_KARAOKEFORGE_SPACE=your-hf-username/KaraokeForge-Worker
-```
-
-or, for the self-hosted FastAPI mode:
+Set the worker URL either with an environment variable:
 
 ```text
 NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL=http://localhost:8000
 ```
+
+or paste an HTTPS worker URL into the website's **Processing engine** field.
 
 ### Worker
 
@@ -52,47 +55,22 @@ Or run it directly:
 ```bash
 cd worker
 python -m venv .venv
-# activate the environment
 pip install -r requirements.txt
 ffmpeg -version
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-### Free ZeroGPU Space
+Check `http://localhost:8000/health`.
 
-Create a new **Gradio Space**, select **ZeroGPU** hardware in the Space settings, and copy `hf_space/README.md`, `hf_space/app.py`, `hf_space/requirements.txt`, and `hf_space/packages.txt` into the Space. ZeroGPU is currently compatible with Gradio and can be hosted free on eligible personal accounts; the current free quota is 5 GPU-minutes per day. citeturn576858search0turn576858search2
+For CPU testing, use `WHISPER_MODEL=tiny` or `base`. `small` is the default. A GPU worker is strongly recommended for useful processing times. Keep `MAX_CONCURRENT_JOBS=1` on a single-GPU machine.
 
-This repository includes `.github/workflows/deploy-hf-worker.yml`, which can create/update the Space automatically after you add `HF_TOKEN` and `HF_SPACE_ID` as GitHub Actions repository secrets. The workflow runs on changes to `hf_space/**` or by manual dispatch.
+## Vercel
 
-The worker uses a 300-second GPU duration budget and a single concurrent queue slot. A single song can consume a meaningful part of the free daily quota, so this path is intended for prototype/testing rather than high-volume service.
+Deploy the Next.js application to Vercel. The large upload is sent directly from the browser to the worker, avoiding the Vercel Function request-body limit. The production worker should be placed on persistent GPU/CPU infrastructure with a persistent `JOBS_DIR` volume.
 
-## Deployment
+## Important limitations of the free route
 
-### Vercel
-
-Import `omaparekh-ux/KaraokeForge` into Vercel as a Next.js project. No Vercel upload proxy is required. Large media is sent directly from the browser to the configured Gradio Space or self-hosted worker.
-
-Set:
-
-```text
-NEXT_PUBLIC_KARAOKEFORGE_SPACE=your-hf-username/KaraokeForge-Worker
-```
-
-The fallback FastAPI setting remains:
-
-```text
-NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL=https://YOUR-WORKER-HOST
-```
-
-Vercel's function request-body limit is therefore not in the media-upload path. citeturn848328search1
-
-### Self-hosted worker
-
-Set the worker's `FRONTEND_ORIGINS` to the exact Vercel origin and keep `JOBS_DIR` on persistent storage. See `DEPLOYMENT.md` for the full configuration.
-
-## CI
-
-GitHub Actions validates the Next.js build and Python worker syntax on pushes and pull requests to `main`.
+Kaggle/Colab notebook sessions are temporary. When the notebook stops, the worker and its temporary Cloudflare URL stop. Generated files on that session are also temporary. Quick Tunnels are explicitly intended for testing/development, not production. citeturn813855search0
 
 ## Media rights
 
