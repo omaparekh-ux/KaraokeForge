@@ -62,6 +62,8 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 Create a new **Gradio Space**, select **ZeroGPU** hardware in the Space settings, and copy `hf_space/README.md`, `hf_space/app.py`, `hf_space/requirements.txt`, and `hf_space/packages.txt` into the Space. ZeroGPU is currently compatible with Gradio and can be hosted free on eligible personal accounts; the current free quota is 5 GPU-minutes per day. citeturn576858search0turn576858search2
 
+This repository includes `.github/workflows/deploy-hf-worker.yml`, which can create/update the Space automatically after you add `HF_TOKEN` and `HF_SPACE_ID` as GitHub Actions repository secrets. The workflow runs on changes to `hf_space/**` or by manual dispatch.
+
 The worker uses a 300-second GPU duration budget and a single concurrent queue slot. A single song can consume a meaningful part of the free daily quota, so this path is intended for prototype/testing rather than high-volume service.
 
 ## Deployment
