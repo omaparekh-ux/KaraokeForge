@@ -4,7 +4,9 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 
 type Status = "idle" | "queued" | "running" | "uploading" | "extracting" | "separating" | "transcribing" | "rendering" | "complete" | "failed";
 type Job = { jobId: string; status: Status; progress: number; message: string; filename?: string; error?: string; wordCount?: number; segmentCount?: number };
+
 const stages = ["Preparing audio", "Removing vocals", "Transcribing lyrics", "Rendering video"];
+const workerUrl = process.env.NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL?.replace(/\/$/, "") ?? "";
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -16,24 +18,48 @@ export default function Home() {
   const percent = Math.max(0, Math.min(100, job?.progress ?? 0));
   const stageIndex = useMemo(() => ({ queued: 0, running: 0, extracting: 0, separating: 1, transcribing: 2, rendering: 3, complete: 4 } as Record<string, number>)[job?.status ?? "queued"] ?? 0, [job?.status]);
 
-  function choose(selected?: File) { if (!selected) return; if (!(selected.type.startsWith("audio/") || selected.type.startsWith("video/"))) { setError("Please choose an audio or video file."); return; } setFile(selected); setJob(null); setError(""); }
+  function choose(selected?: File) {
+    if (!selected) return;
+    if (!(selected.type.startsWith("audio/") || selected.type.startsWith("video/"))) { setError("Please choose an audio or video file."); return; }
+    setFile(selected); setJob(null); setError("");
+  }
+
   function onDrop(event: DragEvent<HTMLDivElement>) { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files?.[0]); }
 
   useEffect(() => {
-    if (!job?.jobId || ["complete", "failed"].includes(job.status)) return;
-    const poll = async () => { try { const response = await fetch(`/api/jobs/${job.jobId}`, { cache: "no-store" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not read job status."); setJob(data); if (data.status === "failed") setError(data.error || "Processing failed."); } catch (err) { setError(err instanceof Error ? err.message : "Status check failed."); } };
-    poll(); const timer = window.setInterval(poll, 1500); return () => window.clearInterval(timer);
+    if (!job?.jobId || !workerUrl || ["complete", "failed"].includes(job.status)) return;
+    const poll = async () => {
+      try {
+        const response = await fetch(`${workerUrl}/jobs/${job.jobId}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not read job status.");
+        setJob(data);
+        if (data.status === "failed") setError(data.error || "Processing failed.");
+      } catch (err) { setError(err instanceof Error ? err.message : "Status check failed."); }
+    };
+    poll();
+    const timer = window.setInterval(poll, 1500);
+    return () => window.clearInterval(timer);
   }, [job?.jobId, job?.status]);
 
   async function start() {
     if (!file || busy) return;
+    if (!workerUrl) { setError("The karaoke worker is not connected. Set NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL in Vercel."); return; }
     setError(""); setJob({ jobId: "", status: "uploading", progress: 0, message: "Uploading media…", filename: file.name });
     const body = new FormData(); body.append("file", file);
-    try { const response = await fetch("/api/jobs", { method: "POST", body }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Upload failed."); setJob({ ...data, progress: 0, message: "Queued" }); }
-    catch (err) { setJob({ jobId: "", status: "failed", progress: 0, message: "", filename: file.name }); setError(err instanceof Error ? err.message : "Upload failed."); }
+    try {
+      const response = await fetch(`${workerUrl}/jobs`, { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Upload failed.");
+      setJob({ ...data, progress: 0, message: "Queued" });
+    } catch (err) {
+      setJob({ jobId: "", status: "failed", progress: 0, message: "", filename: file.name });
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    }
   }
+
   function reset() { setFile(null); setJob(null); setError(""); if (inputRef.current) inputRef.current.value = ""; }
-  const base = job?.jobId ? `/api/jobs/${job.jobId}` : "";
+  const base = job?.jobId && workerUrl ? `${workerUrl}/jobs/${job.jobId}` : "";
 
   return <main className="shell">
     <nav className="nav"><div className="brand">Karaoke<span>Forge</span></div><div className="badge">Open-source audio pipeline</div></nav>
