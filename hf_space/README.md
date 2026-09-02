@@ -24,4 +24,6 @@ The GPU work is performed with open-source Demucs and faster-whisper. No paid AI
 
 ## Setup
 
-Create a Hugging Face Space using the **Gradio** SDK, enable **ZeroGPU** hardware in the Space settings, and copy the contents of this directory into the Space. ZeroGPU currently requires Gradio and can be hosted free on eligible personal accounts. See the project deployment guide for the exact connection steps.
+Create a Hugging Face Space using the **Gradio** SDK, enable **ZeroGPU** hardware in the Space settings, and copy the contents of this directory into the Space. ZeroGPU currently requires Gradio and can be hosted free on eligible personal accounts. Free accounts currently receive 5 GPU-minutes per day. citeturn614643search0
+
+The karaoke callback requests up to 120 seconds of GPU execution, which is intentionally bounded for the free tier. A normal full-length song can still exceed that budget depending on model loading and render time. The scalable FastAPI worker in `worker/` is the production path when longer jobs are needed.
