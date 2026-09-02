@@ -12,11 +12,11 @@ KaraokeForge turns an uploaded song into a karaoke-ready MP4 without requiring a
 
 ## Architecture
 
-- `app/`: Next.js frontend and API proxy for Vercel.
+- `app/`: Next.js frontend. Large media is uploaded directly from the browser to the worker.
 - `worker/`: canonical FastAPI processing service with FFmpeg, Demucs, faster-whisper, SQLite job state, controlled concurrency, validation, cleanup, previews and downloads.
 - `processor/`: legacy prototype kept for reference; new development should use `worker/`.
 
-The frontend never needs a browser-side connection to the heavy worker. It calls Next.js `/api` routes, which proxy requests to `KARAOKEFORGE_WORKER_URL`.
+The public worker URL is exposed to the browser through `NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL`. The worker enables CORS only for the origins listed in `FRONTEND_ORIGINS`.
 
 ## Local development
 
@@ -30,7 +30,7 @@ npm run dev
 Copy `.env.example` to `.env.local` and set:
 
 ```text
-KARAOKEFORGE_WORKER_URL=http://localhost:8000
+NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL=http://localhost:8000
 ```
 
 ### Worker
@@ -59,9 +59,17 @@ For CPU testing, use `WHISPER_MODEL=tiny` or `base`. `small` is the default. A G
 
 ## Deployment
 
-Deploy the Next.js app to Vercel and set `KARAOKEFORGE_WORKER_URL` to the public HTTPS URL of the worker. The worker must run on infrastructure capable of executing FFmpeg, PyTorch, Demucs and faster-whisper. See `DEPLOYMENT.md` for the exact setup.
+Import the repository into Vercel as a Next.js project. Set `NEXT_PUBLIC_KARAOKEFORGE_WORKER_URL` to the public HTTPS URL of the worker. Also set the same URL in `KARAOKEFORGE_WORKER_URL` when server-side proxy routes are needed.
 
-The worker stores job state in SQLite and generated media under `JOBS_DIR`. Use a persistent volume for production. The default cleanup policy removes completed/failed jobs after 24 hours.
+The browser uploads the actual media directly to the worker. This avoids Vercel Functions' 4.5 MB request payload limit, which is too small for many songs and practically all source videos. citeturn848328search1
+
+On the worker, set:
+
+```text
+FRONTEND_ORIGINS=https://your-vercel-domain.vercel.app
+```
+
+The worker must run on infrastructure capable of executing FFmpeg, PyTorch, Demucs and faster-whisper. Use a persistent volume for `JOBS_DIR` so generated media and the SQLite job database survive restarts. See `DEPLOYMENT.md` for the full setup.
 
 ## CI
 
